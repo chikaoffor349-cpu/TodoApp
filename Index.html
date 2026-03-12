@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TodoApp</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+:root{
+  --bg:#eef2f7;
+  --card:white;
+  --text:black;
+  --button:#1a73e8;
+}
+body.dark{
+  --bg:#121212;
+  --card:#1e1e1e;
+  --text:#ffffff;
+  --button:#3a8cff;
+}
+body{
+  font-family:Arial,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  display:flex;
+  justify-content:center;
+  padding:20px;
+}
+.container{
+  background:var(--card);
+  padding:25px;
+  border-radius:10px;
+  width:400px;
+  box-shadow:0 6px 20px rgba(0,0,0,0.2);
+}
+h2{text-align:center;}
+input, button, select{
+  padding:10px;
+  border-radius:6px;
+  border:1px solid #ccc;
+  box-sizing:border-box;
+}
+button{
+  background:var(--button);
+  color:white;
+  border:none;
+  cursor:pointer;
+}
+button:hover{background:#0c4db3;}
+ul{list-style:none;padding:0;}
+li{
+  padding:10px;
+  margin-top:8px;
+  border-radius:6px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+li.pending{background:#ffe066;color:black;}
+li.completed{background:#2ecc71;color:white;}
+.deleteBtn {
+  background-color: red;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.deleteBtn:hover{background-color: darkred;}
+.toggle{margin-top:10px;width:100%;}
+canvas{margin-top:20px;}
+.tab-buttons{display:flex;justify-content:space-between;margin-top:15px;}
+.tab-buttons button{width:19%;padding:6px 0;font-size:12px;}
+.smallBtn{
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.smallBtn:hover{background-color: #217dbb;}
+.task-inputs{display:flex; gap:10px; margin-bottom:10px;}
+.task-inputs input{flex:2;}
+</style>
+</head>
+<body>
+
+<div class="container">
+<h2>TodoApp</h2>
+<button class="toggle" onclick="toggleDark()">🌙 Toggle Dark Mode</button>
+
+<!-- Todo Section -->
+<h3>Todo</h3>
+
+<div class="task-inputs">
+  <input id="taskText" placeholder="Enter task">
+  <button class="smallBtn" onclick="document.getElementById('taskDate').focus()">Add Date</button>
+  <button class="smallBtn" onclick="document.getElementById('taskTime').focus()">Add Time</button>
+</div>
+
+<input type="date" id="taskDate" style="margin-bottom:5px;">
+<input type="time" id="taskTime" style="margin-bottom:5px;">
+<button onclick="addTask()">Add Task</button>
+
+<div class="tab-buttons" id="todoTabs">
+  <button onclick="setTaskRange('daily')">Daily</button>
+  <button onclick="setTaskRange('weekly')">Weekly</button>
+  <button onclick="setTaskRange('monthly')">Monthly</button>
+  <button onclick="setTaskRange('yearly')">Yearly</button>
+  <button onclick="setTaskRange('5year')">5 Year</button>
+</div>
+
+<ul id="taskList"></ul>
+<canvas id="taskChart"></canvas>
+
+<hr>
+
+<!-- Finance Section -->
+<h3>Finance</h3>
+<input id="financeSource" placeholder="Income/Expense source">
+<input type="number" id="financeAmount" placeholder="Amount">
+<select id="financeType">
+  <option value="income">Income</option>
+  <option value="expense">Expense</option>
+</select>
+<button onclick="addFinance()">Add Record</button>
+
+<div class="tab-buttons" id="financeTabs">
+  <button onclick="setFinanceRange('daily')">Daily</button>
+  <button onclick="setFinanceRange('weekly')">Weekly</button>
+  <button onclick="setFinanceRange('monthly')">Monthly</button>
+  <button onclick="setFinanceRange('yearly')">Yearly</button>
+  <button onclick="setFinanceRange('5year')">5 Year</button>
+</div>
+
+<ul id="financeList"></ul>
+<canvas id="financeChart"></canvas>
+<canvas id="financePieChart"></canvas>
+
+</div>
+
+<script>
+// --- Utils ---
+function toggleDark(){document.body.classList.toggle("dark");}
+
+// --- Local Storage Setup ---
+let tasks = JSON.parse(localStorage.getItem("tasks"))||[];
+let finance = JSON.parse(localStorage.getItem("finance"))||[];
+
+// --- Task Ranges ---
+let taskRange='weekly';
+function setTaskRange(range){taskRange=range; renderTasks(); updateTaskChart();}
+
+// --- Finance Ranges ---
+let financeRange='weekly';
+function setFinanceRange(range){financeRange=range; renderFinance(); updateFinanceChart(); updateFinancePieChart();}
+
+// --- Add Task ---
+function addTask(){
+  let text=document.getElementById("taskText").value;
+  let date=document.getElementById("taskDate").value;
+  let time=document.getElementById("taskTime").value;
+  if(text=="") return;
+  tasks.push({text,date,time,completed:false,timestamp:Date.now()});
+  localStorage.setItem("tasks",JSON.stringify(tasks));
+  renderTasks();
+  updateTaskChart();
+}
+
+// --- Render Tasks ---
+function renderTasks(){
+  const list = document.getElementById("taskList");
+  list.innerHTML="";
+  let filtered = filterTasksByRange();
+  filtered.forEach((task,index)=>{
+    let li=document.createElement("li");
+    li.className=task.completed?"completed":"pending";
+    let span=document.createElement("span");
+    span.innerText=task.completed?"Completed":task.text+" ("+task.date+" "+task.time+")";
+    span.onclick=()=>{
+      if(!task.completed){
+        task.completed=true;
+        li.className="completed";
+        span.innerText="Completed";
+        localStorage.setItem("tasks",JSON.stringify(tasks));
+        updateTaskChart();
+      }
+    };
+    let del=document.createElement("button");
+    del.className="deleteBtn";
+    del.innerText="Delete";
+    del.onclick=()=>{
+      let idx = tasks.indexOf(task);
+      tasks.splice(idx,1);
+      localStorage.setItem("tasks",JSON.stringify(tasks));
+      renderTasks();
+      updateTaskChart();
+    };
+    li.appendChild(span);
+    li.appendChild(del);
+    list.appendChild(li);
+  });
+}
+
+// --- Task Chart ---
+const taskCtx=document.getElementById("taskChart");
+let taskChart = new Chart(taskCtx,{
+  type:"line",
+  data:{labels:[], datasets:[{label:"Tasks Completed",data:[],borderColor:"green",backgroundColor:"rgba(0,200,0,0.1)",tension:0.3}]},
+  options:{responsive:true,plugins:{legend:{display:true}}}
+});
+function filterTasksByRange(){
+  let now=Date.now();
+  let cutoff;
+  switch(taskRange){
+    case'daily': cutoff=now-86400000; break;
+    case'weekly': cutoff=now-604800000; break;
+    case'monthly': cutoff=now-2592000000; break;
+    case'yearly': cutoff=now-31536000000; break;
+    case'5year': cutoff=now-157680000000; break;
+  }
+  return tasks.filter(t=>t.timestamp>=cutoff);
+}
+function updateTaskChart(){
+  let filtered = filterTasksByRange();
+  let daysArr = [];
+  let counts = [];
+  for(let i=6;i>=0;i--){
+    let day = new Date(Date.now()-i*86400000);
+    let dayLabel = day.getMonth()+1+"/"+day.getDate();
+    let count = filtered.filter(t=>t.completed && new Date(t.timestamp).toDateString()==day.toDateString()).length;
+    daysArr.push(dayLabel);
+    counts.push(count);
+  }
+  taskChart.data.labels=daysArr;
+  taskChart.data.datasets[0].data=counts;
+  taskChart.update();
+}
+
+// --- Finance ---
+function addFinance(){
+  let source=document.getElementById("financeSource").value;
+  let amount=parseFloat(document.getElementById("financeAmount").value);
+  let type=document.getElementById("financeType").value;
+  if(source==""||isNaN(amount)) return;
+  finance.push({source,amount,type,timestamp:Date.now()});
+  localStorage.setItem("finance",JSON.stringify(finance));
+  renderFinance(); updateFinanceChart(); updateFinancePieChart();
+}
+function renderFinance(){
+  const list=document.getElementById("financeList");
+  list.innerHTML="";
+  let filtered = filterFinanceByRange();
+  filtered.forEach((f)=>{
+    let li=document.createElement("li");
+    li.innerText=`${f.type.toUpperCase()}: ${f.source} → $${f.amount}`;
+    let del=document.createElement("button");
+    del.className="deleteBtn";
+    del.innerText="Delete";
+    del.onclick=()=>{
+      let idx = finance.indexOf(f);
+      finance.splice(idx,1);
+      localStorage.setItem("finance",JSON.stringify(finance));
+      renderFinance(); updateFinanceChart(); updateFinancePieChart();
+    };
+    li.appendChild(del);
+    list.appendChild(li);
+  });
+}
+
+// --- Finance Chart ---
+const financeCtx=document.getElementById("financeChart");
+let financeChart=new Chart(financeCtx,{
+  type:"line",
+  data:{labels:[],datasets:[{label:"Net Gain/Loss",data:[],borderColor:"blue",backgroundColor:"rgba(0,0,255,0.1)",tension:0.3}]},
+  options:{responsive:true,plugins:{legend:{display:true}}}
+});
+const financePieCtx=document.getElementById("financePieChart");
+let financePieChart=new Chart(financePieCtx,{
+  type:"pie",
+  data:{labels:[],datasets:[{data:[],backgroundColor:[],label:"Income vs Expense"}]},
+  options:{responsive:true}
+});
+
+function filterFinanceByRange(){
+  let now=Date.now();
+  let cutoff;
+  switch(financeRange){
+    case'daily': cutoff=now-86400000; break;
+    case'weekly': cutoff=now-604800000; break;
+    case'monthly': cutoff=now-2592000000; break;
+    case'yearly': cutoff=now-31536000000; break;
+    case'5year': cutoff=now-157680000000; break;
+  }
+  return finance.filter(f=>f.timestamp>=cutoff);
+}
+
+function updateFinanceChart(){
+  let filtered=filterFinanceByRange();
+  let daysArr=[],netArr=[];
+  for(let i=6;i>=0;i--){
+    let day=new Date(Date.now()-i*86400000);
+    let dayLabel=day.getMonth()+1+"/"+day.getDate();
+    let net=0;
+    filtered.forEach(f=>{
+      if(new Date(f.timestamp).toDateString()==day.toDateString()){
+        net+=f.type=="income"?f.amount:-f.amount;
+      }
+    });
+    daysArr.push(dayLabel); netArr.push(net);
+  }
+  financeChart.data.labels=daysArr;
+  financeChart.data.datasets[0].data=netArr;
+  financeChart.update();
+}
+
+function updateFinancePieChart(){
+  let filtered=filterFinanceByRange();
+  let sourceMap={};
+  filtered.forEach(f=>{
+    if(!sourceMap[f.source]) sourceMap[f.source]=0;
+    sourceMap[f.source]+=f.type=="income"?f.amount:-f.amount;
+  });
+  financePieChart.data.labels=Object.keys(sourceMap);
+  financePieChart.data.datasets[0].data=Object.values(sourceMap);
+  financePieChart.data.datasets[0].backgroundColor=Object.keys(sourceMap).map((_,i)=>`hsl(${i*50},70%,50%)`);
+  financePieChart.update();
+}
+
+// --- Initialize ---
+renderTasks();
+updateTaskChart();
+renderFinance();
+updateFinanceChart();
+updateFinancePieChart();
+</script>
+
+</body>
+</html>
